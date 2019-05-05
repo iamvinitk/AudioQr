@@ -1,0 +1,4 @@
+scipy
+numpy==1.16.3
+PyAudio==0.2.11
+reedsolo==0.3
