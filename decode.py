@@ -1,16 +1,19 @@
 import pyaudio
 import numpy as np
 from reedsolo import RSCodec, ReedSolomonError
+from scipy import signal
 from scipy.signal import butter, sosfilt, sosfreqz, lfilter, iirpeak
+import matplotlib.pyplot as plt
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 44100
 CHUNK = int(round((0.1 / 2) * RATE))
 
-HANDSHAKE_START_FREQ = 17500
+HANDSHAKE_START_FREQ = 17000
 HANDSHAKE_END_FREQ = HANDSHAKE_START_FREQ + 256
-STEP_FREQ = 64
+START_HZ = 16500
+STEP_FREQ = 20
 BITS = 4
 
 
@@ -29,8 +32,15 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
 
 
 def dominant_freq(frame_rate, chunk):
-    w = np.fft.fft(chunk)
-    frequencies = np.fft.fftfreq(len(chunk))
+    b, a = signal.butter(3, [10000 / 22050, 20000 / 22050], btype='bandpass')
+    y = lfilter(b, a, chunk)
+    w = np.fft.fft(y)
+    frequencies = np.fft.fftfreq(len(y))
+    # T = 0.05
+    # nsamples = int(T * RATE)
+    # t = np.linspace(0, T, nsamples, endpoint=False)
+    # plt.plot(t, frequencies, label='Noisy signal')
+    # plt.show()
     # iw = butter_bandpass_filter(w, 14000, 18000, 44100, order=10)
     # w = np.fft.ifft(iw)
     peak_coeff = np.argmax(np.abs(w))
@@ -75,7 +85,7 @@ def decode_bitchunks(chunk_bits, chunks):
 
 def extract_packet(freqs):
     freqs = freqs[::2]
-    bit_chunks = [int(round((f - HANDSHAKE_START_FREQ) / STEP_FREQ)) for f in freqs]
+    bit_chunks = [int(round((f - START_HZ) / STEP_FREQ)) for f in freqs]
     bit_chunks = [c for c in bit_chunks if 0 <= c < (2 ** BITS)]
     return bytearray(decode_bitchunks(BITS, bit_chunks))
 
@@ -99,7 +109,7 @@ def main():
         data = stream.read(CHUNK)
         chunk = np.fromstring(data, dtype=np.int16)
         dom = dominant_freq(RATE, chunk)
-        print(dom)
+        # print(dom)
         if handshake_done and match(dom, HANDSHAKE_END_FREQ):
             byte_stream = extract_packet(frames)
             try:
